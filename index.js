@@ -1,3 +1,4 @@
+"use strict";
 const ldap = require( 'ldapjs' );
 const EventEmitter = require( 'node:events' );
 const urlRegex = /^ldaps?:\/\/[-a-zA-Z0-9%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}(:((6553[0-5])|(655[0-2][0-9])|(65[0-4][0-9]{2})|(6[0-4][0-9]{3})|([1-5][0-9]{4})|([0-5]{0,5})|([0-9]{1,4})))?$/
@@ -170,3 +171,5 @@ class LDAPLogin {
         } );
     }
 }
+
+module.exports = LDAPLogin;
