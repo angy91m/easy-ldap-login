@@ -42,6 +42,7 @@ new LDAPLogin( serverUrls: String | Array, dcString: String [, options: Object =
       * `userAttribute` Optional - `String` that identifies ID attribute for Users in the Group
       * `groupMemberAttribute` Optional - `String` that identifies Group attribute to use for searching its members
     * `Array` of the previous data for multiple groups
+  * `tlsOptions` Optional - `Object` options passed to TLS connection layer when connecting via `ldaps://` (See: [TLS](https://nodejs.org/api/tls.html#tlsconnectoptions-callback) for node.js)
 
 #### Return
 
@@ -70,6 +71,7 @@ ldapLogin.auth( userName: String, password: String [, options: Object = {} ] );
       * `userAttribute` Optional - `String` that identifies ID attribute for Users in the Group
       * `groupMemberAttribute` Optional - `String` that identifies Group attribute to use for searching its members
     * `Array` of the previous data for multiple groups
+  * `tlsOptions` Optional - `Object` options passed to TLS connection layer when connecting via `ldaps://` (See: [TLS](https://nodejs.org/api/tls.html#tlsconnectoptions-callback) for node.js)
 
 #### Return
 

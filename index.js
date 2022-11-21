@@ -37,6 +37,7 @@ class LDAPLogin {
             groupsOu: 'ou=groups',
             groupMemberAttribute: 'member',
             searchGroups: undefined,
+            tlsOptions: {},
             ...options
         };
         this.serverUrls = serverUrls;
@@ -46,6 +47,7 @@ class LDAPLogin {
         this.groupsOu = defaultOpts.groupsOu;
         this.groupMemberAttribute = defaultOpts.groupMemberAttribute;
         this.searchGroups = defaultOpts.searchGroups;
+        this.tlsOptions = defaultOpts.tlsOptions;
         this.robin = 0;
         this.busyServers = [];
     }
@@ -55,7 +57,7 @@ class LDAPLogin {
         }
         return;
     }
-    connect( serverUrls ) {
+    connect( serverUrls, tlsOptions ) {
         return new Promise( ( resolve, reject ) => {
             if ( typeof serverUrls === 'string' ) serverUrls = [serverUrls];
             const thisRobin = serverUrls === this.serverUrls;
@@ -73,7 +75,10 @@ class LDAPLogin {
                 }
                 this.waitForFree( serverUrls[index] )
                 .then( () => {
-                    const client = ldap.createClient( { url: serverUrls[index] } );
+                    const client = ldap.createClient( {
+                        url: serverUrls[index],
+                        tlsOptions
+                    } );
                     client.on( 'error', err => {
                         errors.push( err.message );
                         client.unbind();
@@ -135,11 +140,12 @@ class LDAPLogin {
             groupsOu: this.groupsOu,
             groupMemberAttribute: this.groupMemberAttribute,
             searchGroups: this.searchGroups,
+            tlsOptions: this.tlsOptions,
             ...options
         };
-        let { serverUrls, dcString, usersOu, userAttribute, groupsOu, groupMemberAttribute, searchGroups } = defaultOpts;
+        let { serverUrls, dcString, usersOu, userAttribute, groupsOu, groupMemberAttribute, searchGroups, tlsOptions } = defaultOpts;
         return new Promise( ( resolve, reject ) => {
-            this.connect( serverUrls )
+            this.connect( serverUrls, tlsOptions )
             .then( client => {
                 client.bind( userAttribute + '=' + userName +','+ usersOu + ',' + dcString, password, err => {
                     if ( err ) {
