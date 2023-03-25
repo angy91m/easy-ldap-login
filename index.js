@@ -48,6 +48,7 @@ class LDAPLogin {
         this.groupMemberAttribute = defaultOpts.groupMemberAttribute;
         this.searchGroups = defaultOpts.searchGroups;
         this.tlsOptions = defaultOpts.tlsOptions;
+        this.userSearchAttributes = defaultOpts.userSearchAttributes;
         this.robin = 0;
         this.busyServers = [];
     }
@@ -141,9 +142,10 @@ class LDAPLogin {
             groupMemberAttribute: this.groupMemberAttribute,
             searchGroups: this.searchGroups,
             tlsOptions: this.tlsOptions,
+            userSearchAttributes: this.userSearchAttributes,
             ...options
         };
-        let { serverUrls, dcString, usersOu, userAttribute, groupsOu, groupMemberAttribute, searchGroups, tlsOptions } = defaultOpts;
+        let { serverUrls, dcString, usersOu, userAttribute, groupsOu, groupMemberAttribute, searchGroups, tlsOptions, userSearchAttributes } = defaultOpts;
         return new Promise( ( resolve, reject ) => {
             this.connect( serverUrls, tlsOptions )
             .then( client => {
@@ -152,25 +154,37 @@ class LDAPLogin {
                         client.unbind();
                         return reject( err );
                     }
-                    if ( !searchGroups ) {
-                        client.unbind();
-                        return resolve();
-                    }
-                    if ( typeof searchGroups === 'string' ) searchGroups = [searchGroups];
-                    const promises = [];
-                    searchGroups.forEach( gr => {
-                        if ( typeof gr === 'string' ) {
-                            promises.push( this.search( client, 'cn=' + gr + ',' + groupsOu + ',' + dcString, groupMemberAttribute, userName, userAttribute ) );
-                        } else {
-                            const { cn, ou, groupMemberAttribute: grpMemberAttr, userAttribute: usrAttr } = gr;
-                            if ( !cn || !ou ) return reject( new Error( "Invalid 'cn' or 'ou'" ) );
-                            promises.push( this.search( client, 'cn=' + cn + ',' + ou + ',' + dcString, ( grpMemberAttr || groupMemberAttribute ), userName, ( usrAttr || userAttribute ) ) );
-                        }
+                    let result = {};
+                    client.search( `${usersOu}, ${dcString}`, { scope: 'sub', filter: `(&(${userAttribute}=${userName}))` }, ( err, res ) => {
+                        if ( err ) return reject( err );
+                        res.on( 'error', reject );
+                        res.on( 'searchEntry', uEntry => {
+                            if ( Array.isArray( userSearchAttributes ) ) {
+                                userSearchAttributes.forEach( attr => uEntry.attributes.forEach( att => { if ( att.type == attr ) result[att.type] = att._vals[0].toString() } ) );
+                            }
+                        } );
+                        res.on( 'end', () => {
+                            if ( !searchGroups ) {
+                                client.unbind();
+                                return resolve();
+                            }
+                            if ( typeof searchGroups === 'string' ) searchGroups = [searchGroups];
+                            const promises = [];
+                            searchGroups.forEach( gr => {
+                                if ( typeof gr === 'string' ) {
+                                    promises.push( this.search( client, 'cn=' + gr + ',' + groupsOu + ',' + dcString, groupMemberAttribute, userName, userAttribute ) );
+                                } else {
+                                    const { cn, ou, groupMemberAttribute: grpMemberAttr, userAttribute: usrAttr } = gr;
+                                    if ( !cn || !ou ) return reject( new Error( "Invalid 'cn' or 'ou'" ) );
+                                    promises.push( this.search( client, 'cn=' + cn + ',' + ou + ',' + dcString, ( grpMemberAttr || groupMemberAttribute ), userName, ( usrAttr || userAttribute ) ) );
+                                }
+                            } );
+                            Promise.all( promises )
+                            .then( () => resolve( result ) )
+                            .catch( err => reject( err ) )
+                            .finally( () => client.unbind() );
+                        } );
                     } );
-                    Promise.all( promises )
-                    .then( () => resolve() )
-                    .catch( err => reject( err ) )
-                    .finally( () => client.unbind() );
                 } );
             } )
             .catch( reject );

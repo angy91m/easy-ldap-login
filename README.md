@@ -12,9 +12,9 @@ npm i easy-ldap-login
 
 ```javascript
 const LDAPLogin = require( 'easy-ldap-login' );
-const ldapLogin = new LDAPLogin( 'ldap://myldap01.server.com', 'dc=domain,dc=com', { searchGroups: 'team_marketing' } );
+const ldapLogin = new LDAPLogin( 'ldap://myldap01.server.com', 'dc=domain,dc=com', { searchGroups: 'team_marketing', userSearchAttributes: ['givenName'] } );
 ldapLogin.auth( 'userName', 'password' )
-.then( () => console.log( 'User authenticated' ) )
+.then( userAttrs => console.log( `Hello ${userAttrs.givenName}!` ) )
 .catch( () => console.log( 'Wrong credentials' ) );
 ```
 
@@ -42,6 +42,7 @@ new LDAPLogin( serverUrls: String | Array, dcString: String [, options: Object =
       * `userAttribute` Optional - `String` that identifies ID attribute for Users in the Group
       * `groupMemberAttribute` Optional - `String` that identifies Group attribute to use for searching its members
     * `Array` of the previous data for multiple groups
+  * `userSearchAttributes` Optional - `Array` of `Strings` that indentify user attributes you want to retrieve
   * `tlsOptions` Optional - `Object` options passed to TLS connection layer when connecting via `ldaps://` (See: [TLS](https://nodejs.org/api/tls.html#tlsconnectoptions-callback) for node.js)
 
 #### Return
@@ -71,6 +72,7 @@ ldapLogin.auth( userName: String, password: String [, options: Object = {} ] );
       * `userAttribute` Optional - `String` that identifies ID attribute for Users in the Group
       * `groupMemberAttribute` Optional - `String` that identifies Group attribute to use for searching its members
     * `Array` of the previous data for multiple groups
+  * `userSearchAttributes` Optional - `Array` of `Strings` that indentify user attributes you want to retrieve
   * `tlsOptions` Optional - `Object` options passed to TLS connection layer when connecting via `ldaps://` (See: [TLS](https://nodejs.org/api/tls.html#tlsconnectoptions-callback) for node.js)
 
 #### Return
