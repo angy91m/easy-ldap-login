@@ -104,7 +104,7 @@ class LDAPLogin {
             emitter.emit( 'next' );
         } );
     }
-    search( client, groupStr, groupMemberAttribute, userName, userAttribute ) {
+    groupSearch( client, groupStr, groupMemberAttribute, userName, userAttribute ) {
         return new Promise( ( resolve, reject ) => {
             client.search( groupStr, { attributes: [groupMemberAttribute] }, ( err, res ) => {
                 if ( err ) {
@@ -156,8 +156,14 @@ class LDAPLogin {
                     }
                     let result = {};
                     client.search( `${usersOu}, ${dcString}`, { scope: 'sub', filter: `(&(${userAttribute}=${userName}))` }, ( err, res ) => {
-                        if ( err ) return reject( err );
-                        res.on( 'error', reject );
+                        if ( err ) {
+                            client.unbind();
+                            return reject( err );
+                        }
+                        res.on( 'error', err => {
+                            client.unbind();
+                            reject( err );
+                        } );
                         res.on( 'searchEntry', uEntry => {
                             if ( Array.isArray( userSearchAttributes ) ) {
                                 userSearchAttributes.forEach( attr => uEntry.attributes.forEach( att => { if ( att.type == attr ) result[att.type] = att._vals[0].toString() } ) );
@@ -166,17 +172,17 @@ class LDAPLogin {
                         res.on( 'end', () => {
                             if ( !searchGroups ) {
                                 client.unbind();
-                                return resolve();
+                                return resolve( result );
                             }
                             if ( typeof searchGroups === 'string' ) searchGroups = [searchGroups];
                             const promises = [];
                             searchGroups.forEach( gr => {
                                 if ( typeof gr === 'string' ) {
-                                    promises.push( this.search( client, 'cn=' + gr + ',' + groupsOu + ',' + dcString, groupMemberAttribute, userName, userAttribute ) );
+                                    promises.push( this.groupSearch( client, 'cn=' + gr + ',' + groupsOu + ',' + dcString, groupMemberAttribute, userName, userAttribute ) );
                                 } else {
                                     const { cn, ou, groupMemberAttribute: grpMemberAttr, userAttribute: usrAttr } = gr;
                                     if ( !cn || !ou ) return reject( new Error( "Invalid 'cn' or 'ou'" ) );
-                                    promises.push( this.search( client, 'cn=' + cn + ',' + ou + ',' + dcString, ( grpMemberAttr || groupMemberAttribute ), userName, ( usrAttr || userAttribute ) ) );
+                                    promises.push( this.groupSearch( client, 'cn=' + cn + ',' + ou + ',' + dcString, ( grpMemberAttr || groupMemberAttribute ), userName, ( usrAttr || userAttribute ) ) );
                                 }
                             } );
                             Promise.all( promises )
@@ -188,6 +194,47 @@ class LDAPLogin {
                 } );
             } )
             .catch( reject );
+        } );
+    }
+    userSearch( userName, options = {} ) {
+        if ( typeof options.serverUrls !== 'undefined' ) {
+            options.serverUrls = validateUrls( options.serverUrls );
+            if ( !options.serverUrls.every( url => url ) ) throw new Error( 'Invalid serverUrls' );
+        }
+        const defaultOpts = {
+            serverUrls: this.serverUrls,
+            dcString: this.dcString,
+            usersOu: this.usersOu,
+            userAttribute: this.userAttribute,
+            tlsOptions: this.tlsOptions,
+            userSearchAttributes: this.userSearchAttributes,
+            ...options
+        };
+        let { serverUrls, dcString, usersOu, userAttribute, tlsOptions, userSearchAttributes } = defaultOpts;
+        return new Promise( ( resolve, reject ) => {
+            this.connect( serverUrls, tlsOptions )
+            .then( client => {
+                let result = {};
+                client.search( `${userAttribute}=${userName},${usersOu},${dcString}`, { scope: "sub" }, ( err, res ) => {
+                    if ( err ) {
+                        client.unbind();
+                        return reject( err );
+                    }
+                    res.on( 'error', err => {
+                        client.unbind();
+                        reject( err );
+                    } );
+                    res.on( 'searchEntry', uEntry => {
+                        if ( Array.isArray( userSearchAttributes ) ) {
+                            userSearchAttributes.forEach( attr => uEntry.attributes.forEach( att => { if ( att.type == attr ) result[att.type] = att._vals[0].toString() } ) );
+                        }
+                    } );
+                    res.on( 'end', () => {
+                        client.unbind();
+                        resolve( result );
+                    } );
+                } );
+            } ).catch( reject );
         } );
     }
 }
