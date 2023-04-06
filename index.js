@@ -237,6 +237,47 @@ class LDAPLogin {
             } ).catch( reject );
         } );
     }
+    groupMembers( searchGroup, options = {} ) {
+        if ( typeof options.serverUrls !== 'undefined' ) {
+            options.serverUrls = validateUrls( options.serverUrls );
+            if ( !options.serverUrls.every( url => url ) ) throw new Error( 'Invalid serverUrls' );
+        }
+        const defaultOpts = {
+            serverUrls: this.serverUrls,
+            dcString: this.dcString,
+            userAttribute: this.userAttribute,
+            groupsOu: this.groupsOu,
+            groupMemberAttribute: this.groupMemberAttribute,
+            tlsOptions: this.tlsOptions,
+            ...options
+        };
+        let { serverUrls, dcString, userAttribute, groupsOu, groupMemberAttribute, tlsOptions } = defaultOpts;
+        return new Promise( ( resolve, reject ) => {
+            this.connect( serverUrls, tlsOptions )
+            .then( client => {
+                let members = [];
+                client.search( `cn=${searchGroup},${groupsOu},${dcString}`, { attributes: [groupMemberAttribute] }, ( err, res ) => {
+                    if ( err ) {
+                        client.unbind();
+                        reject( err );
+                        return;
+                    }
+                    res.on( 'error', ( err ) => {
+                        client.unbind();
+                        reject( err );
+                    } );
+                    res.on( 'searchEntry', entry => {
+                        members = entry.attributes.find( at => at.type == groupMemberAttribute )._vals.map( u => u.toString().split( ',' )[0].replace( userAttribute + "=", "" ) );
+                    } );
+                    res.on( 'end', () => {
+                        client.unbind();
+                        resolve( members );
+                    } );
+                } );
+            } )
+            .catch( reject );
+        } );
+    }
 }
 
 module.exports = LDAPLogin;
