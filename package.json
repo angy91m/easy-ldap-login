@@ -27,6 +27,6 @@
   },
   "homepage": "https://github.com/angy91m/easy-ldap-login#readme",
   "dependencies": {
-    "ldapjs": "^2.3.3"
+    "ldapjs": "^3.0.2"
   }
 }

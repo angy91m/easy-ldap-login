@@ -115,10 +115,7 @@ class LDAPLogin {
                     reject( err );
                 } );
                 res.on( 'searchEntry', entry => {
-                    const users = entry.object.member.map( user => {
-                        user = user.slice( user.indexOf( userAttribute ) + userAttribute.length + 1, user.indexOf( ',', user.indexOf( userAttribute ) ) );
-                        return user;
-                    } );
+                    const users = entry.pojo.attributes.find( at => at.type == groupMemberAttribute ).values.map( u => u.toString().split( ',' )[0].replace( userAttribute + "=", "" ) );
                     if ( !users.includes( userName ) ) {
                         reject( new Error( 'User not in cn' ) );
                     } else {
@@ -155,7 +152,7 @@ class LDAPLogin {
                         return reject( err );
                     }
                     let result = {};
-                    client.search( `${usersOu}, ${dcString}`, { scope: 'sub', filter: `(&(${userAttribute}=${userName}))` }, ( err, res ) => {
+                    client.search( `${usersOu},${dcString}`, { scope: 'sub', filter: `(&(${userAttribute}=${userName}))`, attributes: userSearchAttributes }, ( err, res ) => {
                         if ( err ) {
                             client.unbind();
                             return reject( err );
@@ -165,9 +162,7 @@ class LDAPLogin {
                             reject( err );
                         } );
                         res.on( 'searchEntry', uEntry => {
-                            if ( Array.isArray( userSearchAttributes ) ) {
-                                userSearchAttributes.forEach( attr => uEntry.attributes.forEach( att => { if ( att.type == attr ) result[att.type] = att._vals[0].toString() } ) );
-                            }
+                            uEntry.pojo.attributes.forEach( attr => result[attr.type] = attr.values[0].toString() );
                         } );
                         res.on( 'end', () => {
                             if ( !searchGroups ) {
@@ -215,7 +210,7 @@ class LDAPLogin {
             this.connect( serverUrls, tlsOptions )
             .then( client => {
                 let result = {};
-                client.search( `${userAttribute}=${userName},${usersOu},${dcString}`, { scope: "sub" }, ( err, res ) => {
+                client.search( `${userAttribute}=${userName},${usersOu},${dcString}`, { scope: "sub", attributes: userSearchAttributes }, ( err, res ) => {
                     if ( err ) {
                         client.unbind();
                         return reject( err );
@@ -225,9 +220,7 @@ class LDAPLogin {
                         reject( err );
                     } );
                     res.on( 'searchEntry', uEntry => {
-                        if ( Array.isArray( userSearchAttributes ) ) {
-                            userSearchAttributes.forEach( attr => uEntry.attributes.forEach( att => { if ( att.type == attr ) result[att.type] = att._vals[0].toString() } ) );
-                        }
+                        uEntry.pojo.attributes.forEach( attr => result[attr.type] = attr.values[0].toString() );
                     } );
                     res.on( 'end', () => {
                         client.unbind();
@@ -267,7 +260,7 @@ class LDAPLogin {
                         reject( err );
                     } );
                     res.on( 'searchEntry', entry => {
-                        members = entry.attributes.find( at => at.type == groupMemberAttribute )._vals.map( u => u.toString().split( ',' )[0].replace( userAttribute + "=", "" ) );
+                        members = entry.pojo.attributes.find( at => at.type == groupMemberAttribute ).values.map( u => u.toString().split( ',' )[0].replace( userAttribute + "=", "" ) );
                     } );
                     res.on( 'end', () => {
                         client.unbind();
