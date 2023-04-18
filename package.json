@@ -1,6 +1,6 @@
 {
   "name": "easy-ldap-login",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "easy-ldap-login allows you to easily authenticate users on LDAP server and check if they are in a specific group",
   "main": "index.js",
   "scripts": {
