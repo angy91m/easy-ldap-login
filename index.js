@@ -1,4 +1,5 @@
 "use strict";
+const isReadyTcp = require('is-ready-tcp');
 const ldap = require( 'ldapjs' );
 const EventEmitter = require( 'node:events' );
 const urlRegex = /^ldaps?:\/\/[-a-zA-Z0-9%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}(:((6553[0-5])|(655[0-2][0-9])|(65[0-4][0-9]{2})|(6[0-4][0-9]{3})|([1-5][0-9]{4})|([0-5]{0,5})|([0-9]{1,4})))?$/
@@ -37,6 +38,7 @@ class LDAPLogin {
             groupsOu: 'ou=groups',
             groupMemberAttribute: 'member',
             searchGroups: undefined,
+            timeoutMs: 300,
             tlsOptions: {},
             ...options
         };
@@ -47,6 +49,7 @@ class LDAPLogin {
         this.groupsOu = defaultOpts.groupsOu;
         this.groupMemberAttribute = defaultOpts.groupMemberAttribute;
         this.searchGroups = defaultOpts.searchGroups;
+        this.timeoutMs = defaultOpts.timeoutMs;
         this.tlsOptions = defaultOpts.tlsOptions;
         this.userSearchAttributes = defaultOpts.userSearchAttributes;
         this.robin = 0;
@@ -75,6 +78,7 @@ class LDAPLogin {
                     if ( this.robin === serverUrls.length ) this.robin = 0;
                 }
                 this.waitForFree( serverUrls[index] )
+                .then( () => isReadyTcp( serverUrls[index].split( ':' )[2], serverUrls[index].split( ':' )[1].replace( /^\/\//, '' ), this.timeoutMs / 1000, 0 ) )
                 .then( () => {
                     const client = ldap.createClient( {
                         url: serverUrls[index],
@@ -95,6 +99,11 @@ class LDAPLogin {
                         } );
                         return resolve( client );
                     } );
+                } )
+                .catch( err => {
+                    errors.push( err.message );
+                    i++;
+                    return emitter.emit( 'next' );
                 } );
             } );
             emitter.on( 'close', () => {
