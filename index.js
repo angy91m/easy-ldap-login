@@ -1,9 +1,10 @@
 "use strict";
-const isReadyTcp = require('is-ready-tcp');
-const ldap = require( 'ldapjs' );
-const EventEmitter = require( 'node:events' );
-const urlRegex = /^ldaps?:\/\/[-a-zA-Z0-9%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}(:((6553[0-5])|(655[0-2][0-9])|(65[0-4][0-9]{2})|(6[0-4][0-9]{3})|([1-5][0-9]{4})|([0-5]{0,5})|([0-9]{1,4})))?$/
-const portRegex = /:((6553[0-5])|(655[0-2][0-9])|(65[0-4][0-9]{2})|(6[0-4][0-9]{3})|([1-5][0-9]{4})|([0-5]{0,5})|([0-9]{1,4}))$/
+const isReadyTcp = require( 'is-ready-tcp' ),
+fs = require( 'fs' ),
+ldap = require( 'ldapjs' ),
+EventEmitter = require( 'node:events' ),
+urlRegex = /^ldaps?:\/\/[-a-zA-Z0-9%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}(:((6553[0-5])|(655[0-2][0-9])|(65[0-4][0-9]{2})|(6[0-4][0-9]{3})|([1-5][0-9]{4})|([0-5]{0,5})|([0-9]{1,4})))?$/,
+portRegex = /:((6553[0-5])|(655[0-2][0-9])|(65[0-4][0-9]{2})|(6[0-4][0-9]{3})|([1-5][0-9]{4})|([0-5]{0,5})|([0-9]{1,4}))$/
 
 const validateUrl = url => {
     if ( url.match( urlRegex ) ) {
@@ -54,6 +55,14 @@ class LDAPLogin {
         this.userSearchAttributes = defaultOpts.userSearchAttributes;
         this.robin = 0;
         this.busyServers = [];
+        if ( typeof this.tlsOptions.caCertPath != 'undefined' ) {
+            this.tlsOptions.ca = fs.readFileSync( this.tlsOptions.caCertPath );
+            delete this.tlsOptions.caCertPath;
+        }
+        if ( typeof this.tlsOptions.certPath != 'undefined' ) {
+            this.tlsOptions.cert = fs.readFileSync( this.tlsOptions.certPath );
+            delete this.tlsOptions.certPath;
+        }
     }
     async waitForFree( url ) {
         while ( this.busyServers.includes( url ) ) {
@@ -152,6 +161,14 @@ class LDAPLogin {
             ...options
         };
         let { serverUrls, dcString, usersOu, userAttribute, groupsOu, groupMemberAttribute, searchGroups, tlsOptions, userSearchAttributes } = defaultOpts;
+        if ( typeof tlsOptions.caCertPath != 'undefined' ) {
+            tlsOptions.ca = fs.readFileSync( tlsOptions.caCertPath );
+            delete tlsOptions.caCertPath;
+        }
+        if ( typeof tlsOptions.certPath != 'undefined' ) {
+            tlsOptions.cert = fs.readFileSync( tlsOptions.certPath );
+            delete tlsOptions.certPath;
+        }
         return new Promise( ( resolve, reject ) => {
             this.connect( serverUrls, tlsOptions )
             .then( client => {

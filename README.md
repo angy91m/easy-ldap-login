@@ -44,6 +44,8 @@ new LDAPLogin( serverUrls: String | Array, dcString: String [, options: Object =
     * `Array` of the previous data for multiple groups
   * `userSearchAttributes` Optional - `Array` of `Strings` that indentify user attributes you want to retrieve
   * `tlsOptions` Optional - `Object` options passed to TLS connection layer when connecting via `ldaps://` (See: [TLS](https://nodejs.org/api/tls.html#tlsconnectoptions-callback) for node.js)
+    * `caCertPath` Optional - `String` path of CA Cert File
+    * `certPath` Optional - `String` path of Cert File
 
 #### Return
 
@@ -74,6 +76,8 @@ ldapLogin.auth( userName: String, password: String [, options: Object = {} ] );
     * `Array` of the previous data for multiple groups
   * `userSearchAttributes` Optional - `Array` of `Strings` that indentify user attributes you want to retrieve
   * `tlsOptions` Optional - `Object` options passed to TLS connection layer when connecting via `ldaps://` (See: [TLS](https://nodejs.org/api/tls.html#tlsconnectoptions-callback) for node.js)
+    * `caCertPath` Optional - `String` path of CA Cert File
+    * `certPath` Optional - `String` path of Cert File
 
 #### Return
 
