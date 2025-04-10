@@ -41,6 +41,8 @@ class LDAPLogin {
             searchGroups: undefined,
             timeoutMs: 300,
             tlsOptions: {},
+            simpleGroupSearch: false,
+            returnGroups: true,
             ...options
         };
         this.serverUrls = serverUrls;
@@ -53,6 +55,8 @@ class LDAPLogin {
         this.timeoutMs = defaultOpts.timeoutMs;
         this.tlsOptions = defaultOpts.tlsOptions;
         this.userSearchAttributes = defaultOpts.userSearchAttributes;
+        this.simpleGroupSearch = defaultOpts.simpleGroupSearch;
+        this.returnGroups = defaultOpts.returnGroups;
         this.robin = 0;
         this.busyServers = [];
         if ( typeof this.tlsOptions.caCertPath != 'undefined' ) {
@@ -143,6 +147,26 @@ class LDAPLogin {
             } );
         } );
     }
+    sGroupSearch(client, searchBase, filter) {
+        const groups = [];
+        return new Promise( ( resolve, reject ) => {
+            client.search( searchBase, { attributes: ['cn'], filter, scope: 'sub' }, ( err, res ) => {
+                if ( err ) {
+                    reject( err );
+                    return;
+                }
+                res.on( 'error', ( err ) => {
+                    reject( err );
+                } );
+                res.on( 'searchEntry', entry => {
+                    groups.push(entry.pojo.attributes.find(at => at.type == 'cn').values[0]);
+                } );
+                res.on('end', () => {
+                    resolve(groups);
+                })
+            } );
+        } );
+    }
     auth( userName, password, options = {} ) {
         if ( typeof options.serverUrls !== 'undefined' ) {
             options.serverUrls = validateUrls( options.serverUrls );
@@ -158,9 +182,11 @@ class LDAPLogin {
             searchGroups: this.searchGroups,
             tlsOptions: this.tlsOptions,
             userSearchAttributes: this.userSearchAttributes,
+            simpleGroupSearch: this.simpleGroupSearch,
+            returnGroups: this.returnGroups,
             ...options
         };
-        let { serverUrls, dcString, usersOu, userAttribute, groupsOu, groupMemberAttribute, searchGroups, tlsOptions, userSearchAttributes } = defaultOpts;
+        let { serverUrls, dcString, usersOu, userAttribute, groupsOu, groupMemberAttribute, searchGroups, tlsOptions, userSearchAttributes, simpleGroupSearch, returnGroups } = defaultOpts;
         if ( typeof tlsOptions.caCertPath != 'undefined' ) {
             tlsOptions.ca = readFileSync( tlsOptions.caCertPath );
             delete tlsOptions.caCertPath;
@@ -196,20 +222,49 @@ class LDAPLogin {
                                 return resolve( result );
                             }
                             if ( typeof searchGroups === 'string' ) searchGroups = [searchGroups];
-                            const promises = [];
-                            searchGroups.forEach( gr => {
-                                if ( typeof gr === 'string' ) {
-                                    promises.push( this.groupSearch( client, 'cn=' + gr + ',' + groupsOu + ',' + dcString, groupMemberAttribute, userName, userAttribute ) );
-                                } else {
-                                    const { cn, ou, groupMemberAttribute: grpMemberAttr, userAttribute: usrAttr } = gr;
-                                    if ( !cn || !ou ) return reject( new Error( "Invalid 'cn' or 'ou'" ) );
-                                    promises.push( this.groupSearch( client, 'cn=' + cn + ',' + ou + ',' + dcString, ( grpMemberAttr || groupMemberAttribute ), userName, ( usrAttr || userAttribute ) ) );
-                                }
-                            } );
-                            Promise.all( promises )
-                            .then( () => resolve( result ) )
-                            .catch( err => reject( err ) )
-                            .finally( () => client.unbind() );
+                            if (simpleGroupSearch && searchGroups.length) {
+                                let searchGroupFilter = '(&(|' + searchGroups.map( gr => {
+                                    if (typeof gr == 'string') {
+                                        return `(cn=${gr})`;
+                                    } else {
+                                        return `(cn=${gr.cn})`;
+                                    }
+                                }).join('') + `)(${groupMemberAttribute}=${userAttribute}=${userName},${usersOu},${dcString}))`;
+                                this.sGroupSearch(client, groupsOu + ',' + dcString, searchGroupFilter)
+                                    .then(groups => {
+                                        if (groups.length) {
+                                            if (returnGroups) result.groups = groups;
+                                            resolve(result);
+                                        } else {
+                                            reject(new Error( 'User not in cn' ));
+                                        }
+                                    })
+                                    .catch(err => reject(err))
+                                    .finally(()=> client.unbind());
+                            } else {
+                                const promises = [];
+                                searchGroups.forEach( gr => {
+                                    if ( typeof gr === 'string' ) {
+                                        promises.push( this.groupSearch( client, 'cn=' + gr + ',' + groupsOu + ',' + dcString, groupMemberAttribute, userName, userAttribute ).then(() => gr) );
+                                    } else {
+                                        const { cn, ou, groupMemberAttribute: grpMemberAttr, userAttribute: usrAttr } = gr;
+                                        if ( !cn || !ou ) return reject( new Error( "Invalid 'cn' or 'ou'" ) );
+                                        promises.push( this.groupSearch( client, 'cn=' + cn + ',' + ou + ',' + dcString, ( grpMemberAttr || groupMemberAttribute ), userName, ( usrAttr || userAttribute ) ).then(()=>cn) );
+                                    }
+                                } );
+                                Promise.allSettled( promises )
+                                .then(res => res.filter(pr => pr.status == 'fulfilled').map(pr => pr.value))
+                                .then( res => {
+                                    if (res.length) {
+                                        if (returnGroups) result.groups = res;
+                                        resolve( result );
+                                    } else {
+                                        reject(new Error( 'User not in cn' ));
+                                    }
+                                } )
+                                .catch( err => reject( err ) )
+                                .finally( () => client.unbind() );
+                            }
                         } );
                     } );
                 } );
@@ -229,9 +284,13 @@ class LDAPLogin {
             userAttribute: this.userAttribute,
             tlsOptions: this.tlsOptions,
             userSearchAttributes: this.userSearchAttributes,
+            searchGroups: this.searchGroups,
+            groupsOu: this.groupsOu,
+            groupMemberAttribute: this.groupMemberAttribute,
+            returnGroups: this.returnGroups,
             ...options
         };
-        let { serverUrls, dcString, usersOu, userAttribute, tlsOptions, userSearchAttributes } = defaultOpts;
+        let { serverUrls, dcString, usersOu, userAttribute, tlsOptions, userSearchAttributes, searchGroups, groupsOu, groupMemberAttribute, returnGroups } = defaultOpts;
         return new Promise( ( resolve, reject ) => {
             this.connect( serverUrls, tlsOptions )
             .then( client => {
@@ -249,8 +308,28 @@ class LDAPLogin {
                         uEntry.pojo.attributes.forEach( attr => result[attr.type] = attr.values[0].toString() );
                     } );
                     res.on( 'end', () => {
-                        client.unbind();
-                        resolve( result );
+                        if (searchGroups && returnGroups) {
+                            if (typeof searchGroups == 'string') searchGroups = [searchGroups];
+                            let searchGroupFilter = '(&(|' + searchGroups.map( gr => {
+                                if (typeof gr == 'string') {
+                                    return `(cn=${gr})`;
+                                } else {
+                                    return `(cn=${gr.cn})`;
+                                }
+                            }).join('') + `)(${groupMemberAttribute}=${userAttribute}=${userName},${usersOu},${dcString}))`;
+                            this.sGroupSearch(client, groupsOu + ',' + dcString, searchGroupFilter)
+                                .then(groups => {
+                                    result.groups = groups;
+                                    resolve(result);
+                                })
+                                .catch(err => {
+                                    reject(err)
+                                })
+                                .finally(()=> client.unbind());
+                        } else {
+                            client.unbind();
+                            resolve( result );
+                        }
                     } );
                 } );
             } ).catch( reject );
@@ -270,7 +349,7 @@ class LDAPLogin {
             tlsOptions: this.tlsOptions,
             ...options
         };
-        let { serverUrls, dcString, userAttribute, groupsOu, groupMemberAttribute, tlsOptions } = defaultOpts;
+        let { serverUrls, dcString, userAttribute, groupsOu, groupMemberAttribute, tlsOptions, userNames = [] } = defaultOpts;
         return new Promise( ( resolve, reject ) => {
             this.connect( serverUrls, tlsOptions )
             .then( client => {
@@ -290,7 +369,7 @@ class LDAPLogin {
                     } );
                     res.on( 'end', () => {
                         client.unbind();
-                        resolve( members );
+                        resolve( userNames.length ? members.filter(m => userNames.includes(m)) : members );
                     } );
                 } );
             } )
