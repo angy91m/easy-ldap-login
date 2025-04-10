@@ -221,7 +221,7 @@ class LDAPLogin {
                                 client.unbind();
                                 return resolve( result );
                             }
-                            if ( typeof searchGroups === 'string' ) searchGroups = [searchGroups];
+                            if ( searchGroups && !Array.isArray(searchGroups) ) searchGroups = [searchGroups];
                             if (simpleGroupSearch && searchGroups.length) {
                                 let searchGroupFilter = '(&(|' + searchGroups.map( gr => {
                                     if (typeof gr == 'string') {
@@ -309,7 +309,7 @@ class LDAPLogin {
                     } );
                     res.on( 'end', () => {
                         if (searchGroups && returnGroups) {
-                            if (typeof searchGroups == 'string') searchGroups = [searchGroups];
+                            if (searchGroups && !Array.isArray(searchGroups) ) searchGroups = [searchGroups];
                             let searchGroupFilter = '(&(|' + searchGroups.map( gr => {
                                 if (typeof gr == 'string') {
                                     return `(cn=${gr})`;
@@ -374,6 +374,74 @@ class LDAPLogin {
                 } );
             } )
             .catch( reject );
+        } );
+    }
+    syncUsers(userNames, options = {}) {
+        if ( typeof options.serverUrls !== 'undefined' ) {
+            options.serverUrls = validateUrls( options.serverUrls );
+            if ( !options.serverUrls.every( url => url ) ) throw new Error( 'Invalid serverUrls' );
+        }
+        const defaultOpts = {
+            serverUrls: this.serverUrls,
+            dcString: this.dcString,
+            usersOu: this.usersOu,
+            userAttribute: this.userAttribute,
+            tlsOptions: this.tlsOptions,
+            userSearchAttributes: this.userSearchAttributes,
+            searchGroups: this.searchGroups,
+            groupsOu: this.groupsOu,
+            groupMemberAttribute: this.groupMemberAttribute,
+            returnGroups: this.returnGroups,
+            ...options
+        };
+        let { serverUrls, dcString, usersOu, userAttribute, tlsOptions, userSearchAttributes, searchGroups, returnGroups } = defaultOpts;
+        if (typeof userNames == 'string') userNames = [userNames];
+        const filter = '(|' + userNames.map(uid => `(uid=${uid})`) + ')';
+        return new Promise( ( resolve, reject ) => {
+            this.connect( serverUrls, tlsOptions )
+            .then( client => {
+                const results = [];
+                client.search( `${usersOu},${dcString}`, { scope: "sub", attributes: userSearchAttributes, filter }, ( err, res ) => {
+                    if ( err ) {
+                        client.unbind();
+                        return reject( err );
+                    }
+                    res.on( 'error', err => {
+                        client.unbind();
+                        reject( err );
+                    } );
+                    res.on( 'searchEntry', uEntry => {
+                        results.push(uEntry.pojo.attributes.map( attr =>( {[attr.type]: attr.values[0].toString()}) ).reduce((acc, v) => {acc = {...acc,...v}; return acc;}, {}));
+                    } );
+                    res.on( 'end', () => {
+                        client.unbind();
+
+                        if (searchGroups && returnGroups) {
+                            results.forEach(u => u.groups = []);
+                            if (searchGroups && !Array.isArray(searchGroups) ) searchGroups = [searchGroups];
+                            Promise.all(searchGroups.map(g => {
+                                return this.groupMembers(typeof g == 'string' ? g : g.cn, {userNames: results.map(u => u.uid)}).then(members => {
+                                    const res = {}
+                                    res[typeof g == 'string' ? g : g.cn] = members;
+                                    return res;
+                                });
+                            }))
+                            .then(groups => {
+                                groups = groups.reduce((acc,v) => {acc = {...acc, ...v}; return acc}, {});
+                                results.forEach(u => {
+                                    for (const groupName in groups) {
+                                        if (groups[groupName].includes(u.uid)) u.groups.push(groupName);
+                                    }
+                                });
+                                resolve(results)
+                            })
+                            .catch(err => reject(err));
+                        } else {
+                            resolve( results );
+                        }
+                    } );
+                } );
+            } ).catch( reject );
         } );
     }
 }
