@@ -396,7 +396,7 @@ class LDAPLogin {
         };
         let { serverUrls, dcString, usersOu, userAttribute, tlsOptions, userSearchAttributes, searchGroups, returnGroups } = defaultOpts;
         if (typeof userNames == 'string') userNames = [userNames];
-        const filter = '(|' + userNames.map(uid => `(uid=${uid})`) + ')';
+        const filter = '(|' + userNames.map(uid => `(uid=${uid})`).join('') + ')';
         return new Promise( ( resolve, reject ) => {
             this.connect( serverUrls, tlsOptions )
             .then( client => {
